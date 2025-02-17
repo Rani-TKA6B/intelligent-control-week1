@@ -1,0 +1,85 @@
+import cv2
+import numpy as np
+import csv
+from datetime import datetime
+
+# Definisikan rentang warna biru muda dan biru tua dalam ruang warna HSV
+lower_light_blue = np.array([94, 50, 70])
+upper_light_blue = np.array([126, 255, 255])
+
+lower_dark_blue = np.array([100, 150, 50])
+upper_dark_blue = np.array([124, 255, 255])
+
+# Fungsi untuk mendeteksi warna biru pada frame
+def detect_blue(frame):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    
+    # Mask untuk warna biru muda
+    mask_light_blue = cv2.inRange(hsv, lower_light_blue, upper_light_blue)
+    
+    # Mask untuk warna biru tua
+    mask_dark_blue = cv2.inRange(hsv, lower_dark_blue, upper_dark_blue)
+    
+    # Gabungkan kedua mask
+    mask = cv2.bitwise_or(mask_light_blue, mask_dark_blue)
+    
+    # Terapkan mask ke frame asli
+    result = cv2.bitwise_and(frame, frame, mask=mask)
+    
+    return mask, result
+
+# Fungsi untuk menambahkan label pada objek yang terdeteksi
+def draw_label(frame, text, position, color=(255, 255, 255)):
+    cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+# Fungsi utama untuk memproses frame, mendeteksi warna biru, dan menampilkan hasilnya
+def process_frame(frame):
+    mask, result = detect_blue(frame)
+    
+    # Temukan kontur dari mask
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    detected_objects = []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 1000:  # Hanya proses objek yang lebih besar dari threshold tertentu
+            x, y, w, h = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)  # Gambar kotak
+            draw_label(frame, 'Blue Object', (x, y - 10))  # Tambahkan label
+            detected_objects.append((x, y, w, h))
+
+    return frame, result, mask, detected_objects
+
+# Fungsi untuk menulis data objek yang terdeteksi ke file CSV
+def write_to_csv(data, filename='detected_objects.csv'):
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        for item in data:
+            writer.writerow([datetime.now(), item[0], item[1], item[2], item[3]])
+
+# Mulai kamera
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    original_frame, detected_frame, mask, detected_objects = process_frame(frame)  # Proses setiap frame
+
+    if detected_objects:
+        write_to_csv(detected_objects)  # Simpan hasil ke CSV
+
+    # Tampilkan frame asli, hasil deteksi, dan mask
+    cv2.imshow('Frame', original_frame)
+    cv2.imshow('Result', detected_frame)
+    cv2.imshow('Mask', mask)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break  # Keluar jika tombol 'q' ditekan
+
+cap.release()
+cv2.destroyAllWindows()  # Tutup semua jendela OpenCV
+
+
+

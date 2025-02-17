@@ -1,0 +1,77 @@
+import cv2
+import numpy as np
+import csv
+from datetime import datetime
+
+# Definisikan rentang warna merah dalam ruang warna HSV
+lower_red_1 = np.array([0, 180, 70])
+upper_red_1 = np.array([10, 255, 255])
+
+lower_red_2 = np.array([0, 180, 70])
+upper_red_2 = np.array([10, 255, 255])
+
+# Fungsi untuk mendeteksi warna merah pada frame
+def detect_red(frame):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # Mask untuk warna merah (dua rentang)
+    mask_red_1 = cv2.inRange(hsv, lower_red_1, upper_red_1)
+    mask_red_2 = cv2.inRange(hsv, lower_red_2, upper_red_2)
+
+    # Gabungkan kedua mask
+    mask = cv2.bitwise_or(mask_red_1, mask_red_2)
+
+    # Terapkan mask ke frame asli
+    result = cv2.bitwise_and(frame, frame, mask=mask)
+
+    return mask, result
+
+# Fungsi untuk menambahkan label pada objek yang terdeteksi
+def draw_label(frame, text, position, color=(255, 255, 255)):
+    cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+# Fungsi utama untuk memproses frame, mendeteksi warna merah, dan menampilkan hasilnya
+def process_frame(frame):
+    mask, result = detect_red(frame)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    detected_objects = []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 1000:
+            x, y, w, h = cv2.boundingRect(contour)
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)  # Gambar kotak warna merah
+            draw_label(frame, 'Red Object', (x, y - 10))
+            detected_objects.append((x, y, w, h))
+
+    return frame, result, mask, detected_objects
+
+# Fungsi untuk menulis data objek yang terdeteksi ke file CSV
+def write_to_csv(data, filename='detected_objects.csv'):
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        for item in data:
+            writer.writerow([datetime.now(), item[0], item[1], item[2], item[3]])
+
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    original_frame, detected_frame, mask, detected_objects = process_frame(frame)
+
+    if detected_objects:
+        write_to_csv(detected_objects)
+
+    cv2.imshow('Frame', original_frame)
+    cv2.imshow('Result', detected_frame)
+    cv2.imshow('Mask', mask)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
